@@ -455,20 +455,25 @@ async function receiveChecked(gi, store){
 async function open_history(){
   setView('รายการที่สั่งแล้ว', true);
   $('app').innerHTML = '<div class="empty">กำลังโหลด…</div>';
-  const res = await apiGet('ordered');
+  const res = await apiGet('history');
   const items = res.items||[];
   if(!items.length){ $('app').innerHTML = '<div class="empty">ยังไม่มีรายการที่สั่ง</div>'; return; }
-  // จัดกลุ่มตาม "ใบสั่ง" (orderedAt + ร้าน)
+  // จัดกลุ่มตาม "ใบสั่ง" (ร้าน + เวลาสั่ง)
   const groups={};
   items.forEach(it=>{ const k=(it.orderedAt||'-')+'|'+(it.store||''); (groups[k]=groups[k]||{store:it.store,at:it.orderedAt,items:[]}).items.push(it); });
   const keys=Object.keys(groups).sort((a,b)=>String(groups[b].at||'').localeCompare(String(groups[a].at||'')));
   let html='';
   keys.forEach(k=>{
     const g=groups[k];
-    html += `<div class="group-title">${g.store||'(ไม่ระบุร้าน)'} <small style="color:var(--muted);font-weight:400">${fmtWhen(g.at)}</small></div>`;
-    g.items.forEach(it=>{ html += `<div class="row"><div class="name"><b>${it.name}</b>
-       <small>x${it.qty} ${it.unit||''}</small></div>
-       ${it.link?`<a class="btn-sm" href="${it.link}" target="_blank">ลิงก์</a>`:''}</div>`; });
+    html += `<div class="group-title">🏪 ${g.store||'(ไม่ระบุร้าน)'} <small style="color:var(--muted);font-weight:400">· สั่ง ${fmtWhen(g.at)||'—'}</small></div>`;
+    g.items.forEach(it=>{
+      const recv = it.status==='ได้รับแล้ว'
+        ? `<small style="color:#0a8a3a">✓ รับแล้ว ${fmtWhen(it.receivedAt)||''}</small>`
+        : `<small style="color:#c47a00">⏳ ยังไม่ได้รับ</small>`;
+      html += `<div class="row"><div class="name"><b>${it.name}</b>
+        <small>x${it.qty} ${it.unit||''}</small>${recv}</div>
+        ${it.link?`<a class="btn-sm" href="${it.link}" target="_blank">ลิงก์</a>`:''}</div>`;
+    });
   });
   $('app').innerHTML = html;
 }
