@@ -146,7 +146,7 @@ async function apiPost(action, body={}){
 // ===================================================================
 function setView(title, withBack){
   $('title').textContent = title;
-  $('back').style.display = withBack ? 'inline' : 'none';
+  $('backBtn').style.display = withBack ? 'inline' : 'none';
   window.scrollTo(0,0);
 }
 
