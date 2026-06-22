@@ -197,11 +197,10 @@ function bump(name, d, i){
   $('addConfirm').disabled = !any;
 }
 async function confirmAdd(){
-  const lines = Object.keys(addQty).filter(n=>addQty[n]>0).map(n=>`${n} x${addQty[n]}`);
-  if(!lines.length) return;
-  const msg = '#สั่งของ\n' + lines.join('\n');
+  const items = Object.keys(addQty).filter(n=>addQty[n]>0).map(n=>({ name:n, qty:addQty[n] }));
+  if(!items.length) return;
   try{
-    await sendOrderMessage(msg);
+    await apiPost('addItems', { items });   // เขียนลงชีตตรง ๆ ไม่ผ่าน liff.sendMessages
     toast('ส่งเข้ารายการแล้ว');
     closeOrHome();
   }catch(e){ toast('ส่งไม่สำเร็จ'); }
@@ -226,10 +225,12 @@ async function saveNewItem(){
   const categories = [...document.querySelectorAll('.niCat:checked')].map(c=>c.value);
   const unit = $('niUnit').value.trim();
   const qty = parseInt($('niQty').value||'0',10);
-  await apiPost('addMasterItem', { name, categories, unit, qty });   // บันทึกถาวร
-  if(qty>0){ await sendOrderMessage(`#สั่งของ\n${name} x${qty}`); }  // เข้ากองด้วย
-  toast('บันทึกแล้ว');
-  closeOrHome();
+  try{
+    await apiPost('addMasterItem', { name, categories, unit, qty });   // บันทึกถาวร
+    if(qty>0){ await apiPost('addItems', { items:[{ name, qty }] }); }  // เข้ากองด้วย (เขียนชีตตรง)
+    toast('บันทึกแล้ว');
+    closeOrHome();
+  }catch(e){ toast('บันทึกไม่สำเร็จ'); }
 }
 
 // ===================================================================
