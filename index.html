@@ -117,7 +117,7 @@ async function init(){
       return;
     }
     $('who').textContent = BOOT.name + ' · ' + BOOT.role;
-    goHome();
+    routeFromUrl();
   }catch(e){
     $('app').innerHTML = '<div class="empty">เปิดไม่สำเร็จ: '+e+'</div>';
   }
@@ -166,6 +166,14 @@ function goHome(){
 }
 function tile(view,label,desc,icon){
   return `<div class="tile" onclick="open_${view}()">${icon}<span>${label}<small><br>${desc}</small></span></div>`;
+}
+// deep-link: เปิดหน้าตรงจาก ?v= (add/order/receive/history) — ไม่มี/ไม่มีสิทธิ์ → หน้าหลัก
+function routeFromUrl(){
+  const v = new URLSearchParams(location.search).get('v');
+  const p = BOOT.perm || {};
+  const route = { add:p.add&&open_add, order:p.order&&open_order,
+                  receive:p.receive&&open_receive, history:p.view&&open_history }[v];
+  if(route) route(); else goHome();
 }
 
 // ===================================================================
