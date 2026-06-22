@@ -169,11 +169,16 @@ function tile(view,label,desc,icon){
 }
 // deep-link: เปิดหน้าตรงจาก ?v= (add/order/receive/history) — ไม่มี/ไม่มีสิทธิ์ → หน้าหลัก
 function routeFromUrl(){
-  const v = new URLSearchParams(location.search).get('v');
-  const p = BOOT.perm || {};
-  const route = { add:p.add&&open_add, order:p.order&&open_order,
-                  receive:p.receive&&open_receive, history:p.view&&open_history }[v];
-  if(route) route(); else goHome();
+  let route = null;
+  try{
+    const v = new URLSearchParams(location.search).get('v');
+    const p = BOOT.perm || {};
+    route = { add:p.add&&open_add, order:p.order&&open_order,
+              receive:p.receive&&open_receive, history:p.view&&open_history }[v] || null;
+  }catch(e){}
+  if(!route){ goHome(); return; }
+  // เรียกแบบ async กันไม่ให้ error เด้งกลับไป init (เปิดไม่สำเร็จ) — พังก็ตกมาหน้าหลัก
+  Promise.resolve().then(route).catch(function(){ goHome(); });
 }
 
 // ===================================================================
