@@ -425,17 +425,23 @@ async function open_receive(){
   if(!items.length){ $('app').innerHTML = '<div class="empty">ไม่มีของรอรับ</div>'; return; }
   const byStore = {};
   items.forEach(it=>{ const s=it.store||'(ไม่ระบุร้าน)'; (byStore[s]=byStore[s]||[]).push(it); });
-  let html='';
-  Object.keys(byStore).forEach(store=>{
-    const rows = byStore[store].map(x=>x.row);
+  let html='<p class="sub">ติ๊กเฉพาะของที่มาส่งแล้ว แล้วกดรับ — ของที่ไม่ติ๊กจะค้างไว้รับทีหลัง</p>';
+  Object.keys(byStore).forEach((store,gi)=>{
     html += `<div class="group-title">${store}</div>`;
-    byStore[store].forEach(it=>{ html += `<div class="row"><div class="name"><b>${it.name}</b> <small>x${it.qty} ${it.unit||''}</small></div></div>`; });
-    html += `<button class="btn-sm solid" style="margin-top:8px" onclick='receiveStore(${JSON.stringify(rows)})'>✓ รับของจาก ${store}</button>`;
+    byStore[store].forEach(it=>{
+      html += `<div class="row">
+        <input type="checkbox" class="check rcv g${gi}" value="${it.row}" checked>
+        <div class="name"><b>${it.name}</b> <small>x${it.qty} ${it.unit||''}</small></div>
+      </div>`;
+    });
+    html += `<button class="btn-sm solid" style="margin-top:8px" onclick="receiveChecked(${gi},'${esc(store)}')">✓ รับของที่ติ๊ก (${store})</button>`;
   });
   $('app').innerHTML = html;
 }
-async function receiveStore(rows){
-  await apiPost('markReceived', { rows }); toast('รับของแล้ว'); open_receive();
+async function receiveChecked(gi, store){
+  const rows=[...document.querySelectorAll('.rcv.g'+gi+':checked')].map(c=>parseInt(c.value,10));
+  if(!rows.length){ toast('ติ๊กของที่จะรับก่อน'); return; }
+  await apiPost('markReceived', { rows }); toast('รับของแล้ว '+rows.length+' รายการ'); open_receive();
 }
 
 // ===================================================================
@@ -447,12 +453,21 @@ async function open_history(){
   const res = await apiGet('ordered');
   const items = res.items||[];
   if(!items.length){ $('app').innerHTML = '<div class="empty">ยังไม่มีรายการที่สั่ง</div>'; return; }
+  // จัดกลุ่มตาม "ใบสั่ง" (orderedAt + ร้าน)
+  const groups={};
+  items.forEach(it=>{ const k=(it.orderedAt||'-')+'|'+(it.store||''); (groups[k]=groups[k]||{store:it.store,at:it.orderedAt,items:[]}).items.push(it); });
+  const keys=Object.keys(groups).sort((a,b)=>String(groups[b].at||'').localeCompare(String(groups[a].at||'')));
   let html='';
-  items.forEach(it=>{ html += `<div class="row"><div class="name"><b>${it.name}</b>
-     <small>x${it.qty} ${it.unit||''} · ${it.store||''}</small></div>
-     ${it.link?`<a class="btn-sm" href="${it.link}" target="_blank">ลิงก์</a>`:''}</div>`; });
+  keys.forEach(k=>{
+    const g=groups[k];
+    html += `<div class="group-title">${g.store||'(ไม่ระบุร้าน)'} <small style="color:var(--muted);font-weight:400">${fmtWhen(g.at)}</small></div>`;
+    g.items.forEach(it=>{ html += `<div class="row"><div class="name"><b>${it.name}</b>
+       <small>x${it.qty} ${it.unit||''}</small></div>
+       ${it.link?`<a class="btn-sm" href="${it.link}" target="_blank">ลิงก์</a>`:''}</div>`; });
+  });
   $('app').innerHTML = html;
 }
+function fmtWhen(s){ if(!s||s==='-') return ''; const d=new Date(s); return isNaN(d)?'':d.toLocaleString('th-TH',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
 
 // ===================================================================
 // utils
