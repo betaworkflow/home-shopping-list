@@ -110,18 +110,26 @@ async function init(){
     await liff.init({ liffId: LIFF_ID });
     if(!liff.isLoggedIn()){ liff.login(); return; }
     ID_TOKEN = liff.getIDToken();
-    BOOT = await apiGet('bootstrap');
-    if(!BOOT || !BOOT.ok){
+    // ⚡ เปิดทันทีด้วย bootstrap ที่แคชไว้ (ถ้ามี) แล้วรีเฟรชเบื้องหลัง
+    const cached = loadCachedBoot();
+    if(cached){ BOOT = cached; $('who').textContent = BOOT.name+' · '+BOOT.role; routeFromUrl(); }
+    const fresh = await apiGet('bootstrap');
+    if(fresh && fresh.ok){
+      BOOT = fresh; saveCachedBoot(fresh);
+      $('who').textContent = BOOT.name+' · '+BOOT.role;
+      if(!cached) routeFromUrl();
+    } else if(!cached){
       $('app').innerHTML = '<div class="empty">ยังไม่ได้ลงทะเบียนใช้งาน<br><br>'+
         'ทักบอทในแชตเพื่อรับ userId แล้วให้เจ้าบ้านเพิ่มในแท็บ "สมาชิก"</div>';
-      return;
+    } else if(fresh && !fresh.ok){
+      try{ localStorage.removeItem('boot'); }catch(e){}   // ถูกถอดสิทธิ์ → ล้างแคช
     }
-    $('who').textContent = BOOT.name + ' · ' + BOOT.role;
-    routeFromUrl();
   }catch(e){
-    $('app').innerHTML = '<div class="empty">เปิดไม่สำเร็จ: '+e+'</div>';
+    if(!BOOT) $('app').innerHTML = '<div class="empty">เปิดไม่สำเร็จ: '+e+'</div>';
   }
 }
+function loadCachedBoot(){ try{ const s=localStorage.getItem('boot'); return s?JSON.parse(s):null; }catch(e){ return null; } }
+function saveCachedBoot(b){ try{ localStorage.setItem('boot', JSON.stringify(b)); }catch(e){} }
 
 // ===================================================================
 // เรียก API ไป Apps Script
