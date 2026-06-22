@@ -34,6 +34,9 @@
   .row .name small{ display:block; color:var(--muted); font-size:12px; margin-top:2px; }
   .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
   .chip{ font-size:11px; color:var(--navy); border:1px solid var(--line); border-radius:20px; padding:2px 9px; }
+  .chip.filter{ font-size:13px; padding:6px 14px; cursor:pointer; user-select:none; }
+  .chip.filter.active{ background:var(--navy); color:#fff; border-color:var(--navy); }
+  #catFilter{ margin:4px 0 14px; }
 
   /* ปุ่ม +/- จำนวน */
   .stepper{ display:flex; align-items:center; gap:8px; }
@@ -169,41 +172,78 @@ function tile(view,label,desc,icon){
 // หน้า 1: เพิ่มของ  (ส่งด้วย liff.sendMessages ตามสัญญารูปแบบข้อความ)
 // ===================================================================
 let addQty = {};   // ชื่อ -> จำนวน
+let ADD_CAT = '';  // หมวดที่กรองอยู่ ('' = ทั้งหมด)
 function open_add(){
   setView('เพิ่มของ', true);
-  addQty = {};
-  let html = '<p class="sub">เลือกจำนวนของที่ต้องการ แล้วกดยืนยัน</p>';
-  BOOT.master.forEach((m,i)=>{
-    addQty[m.name] = 0;
+  addQty = {}; ADD_CAT = '';
+  BOOT.master.forEach(m=>{ addQty[m.name] = 0; });
+  const cats = BOOT.categories.filter(c=>c.usedWith!=='ลิงก์ออนไลน์');
+  let html = '<p class="sub">ค้นหาหรือเลือกหมวด แล้วปรับจำนวน กดยืนยัน</p>';
+  html += `<div class="field"><input type="text" id="addSearch" placeholder="🔍 ค้นหาสินค้า…" oninput="renderAddList()"></div>`;
+  html += `<div class="chips" id="catFilter">
+      <span class="chip filter active" onclick="setAddCat('',this)">ทั้งหมด</span>
+      ${cats.map(c=>`<span class="chip filter" onclick="setAddCat('${esc(c.name)}',this)">${c.name}</span>`).join('')}
+    </div>`;
+  html += `<div id="addList"></div>`;
+  html += `<button class="btn ghost" onclick="open_newItem()">+ เพิ่มสินค้าใหม่</button>`;
+  html += `<button class="btn" id="addConfirm" onclick="confirmAdd(this)" disabled>ยืนยันสั่งของ</button>`;
+  $('app').innerHTML = html;
+  renderAddList();
+}
+function setAddCat(c, el){
+  ADD_CAT = c;
+  document.querySelectorAll('#catFilter .chip').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active');
+  renderAddList();
+}
+function renderAddList(){
+  const term = $('addSearch') ? $('addSearch').value.trim().toLowerCase() : '';
+  const items = BOOT.master.map((m,i)=>({m,i}))
+    .filter(({m})=> !ADD_CAT || (m.categories||[]).includes(ADD_CAT))
+    .filter(({m})=> !term || m.name.toLowerCase().includes(term));
+  let html = items.length ? '' : '<div class="empty">ไม่พบสินค้า</div>';
+  items.forEach(({m,i})=>{
     html += `<div class="row">
       <div class="name"><b>${m.name}</b>
         <div class="chips">${m.categories.map(c=>`<span class="chip">${c}</span>`).join('')}</div>
       </div>
       <div class="stepper">
         <button onclick="bump('${esc(m.name)}',-1,${i})">−</button>
-        <span class="q" id="q${i}">0</span>
+        <span class="q" id="q${i}">${addQty[m.name]||0}</span>
         <span class="unit">${m.unit||''}</span>
         <button onclick="bump('${esc(m.name)}',1,${i})">+</button>
-      </div></div>`;
+      </div>
+      <span class="btn-sm" onclick="delMaster('${esc(m.name)}')">ลบ</span>
+    </div>`;
   });
-  html += `<button class="btn ghost" onclick="open_newItem()">+ เพิ่มสินค้าใหม่</button>`;
-  html += `<button class="btn" id="addConfirm" onclick="confirmAdd()" disabled>ยืนยันสั่งของ</button>`;
-  $('app').innerHTML = html;
+  $('addList').innerHTML = html;
 }
 function bump(name, d, i){
   addQty[name] = Math.max(0, (addQty[name]||0) + d);
-  $('q'+i).textContent = addQty[name];
-  const any = Object.values(addQty).some(v=>v>0);
-  $('addConfirm').disabled = !any;
+  const el = $('q'+i); if(el) el.textContent = addQty[name];
+  $('addConfirm').disabled = !Object.values(addQty).some(v=>v>0);
 }
-async function confirmAdd(){
+async function delMaster(name){
+  if(!confirm('ลบ "'+name+'" ออกจากรายการประจำ?')) return;
+  try{
+    const r = await apiPost('deleteMasterItem', { name });
+    if(r && r.ok){
+      BOOT.master = BOOT.master.filter(m=>m.name!==name);
+      delete addQty[name];
+      toast('ลบแล้ว ('+(r.deleted||0)+')');
+      renderAddList();
+    } else { toast('ลบไม่สำเร็จ'); }
+  }catch(e){ toast('ลบไม่สำเร็จ'); }
+}
+async function confirmAdd(btn){
   const items = Object.keys(addQty).filter(n=>addQty[n]>0).map(n=>({ name:n, qty:addQty[n] }));
   if(!items.length) return;
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'กำลังเพิ่ม…';
   try{
-    await apiPost('addItems', { items });   // เขียนลงชีตตรง ๆ ไม่ผ่าน liff.sendMessages
-    toast('ส่งเข้ารายการแล้ว');
-    closeOrHome();
-  }catch(e){ toast('ส่งไม่สำเร็จ'); }
+    const r = await apiPost('addItems', { items });   // เขียนลงชีตตรง ไม่ผ่าน liff.sendMessages
+    if(r && r.ok){ toast('เพิ่มเข้ารายการแล้ว ✓ ('+(r.added||items.length)+')'); goHome(); }
+    else throw 0;
+  }catch(e){ toast('ไม่สำเร็จ ลองใหม่'); btn.disabled=false; btn.textContent=label; }
 }
 
 // เพิ่มสินค้าใหม่เข้ารายการประจำถาวร + ใส่หมวดด้วย checkbox
@@ -217,20 +257,29 @@ function open_newItem(){
       <div>${cats.map(c=>`<label class="cb"><input type="checkbox" class="check niCat" value="${c.name}">${c.name}</label>`).join('')}</div>
     </div>
     <div class="field"><label>จำนวนที่จะสั่งเลย</label><input type="number" id="niQty" value="1" min="0"></div>
-    <button class="btn" onclick="saveNewItem()">บันทึก + ใส่ในรายการสั่ง</button>`;
+    <button class="btn" onclick="saveNewItem(this)">บันทึก + ใส่ในรายการสั่ง</button>`;
 }
-async function saveNewItem(){
+async function saveNewItem(btn){
   const name = $('niName').value.trim();
   if(!name){ toast('ใส่ชื่อสินค้า'); return; }
+  if(BOOT.master.some(m=>(m.name||'').trim().toLowerCase()===name.toLowerCase())){
+    toast('มีสินค้านี้อยู่แล้ว'); return;     // กันซ้ำตั้งแต่ฝั่งหน้าเว็บ
+  }
   const categories = [...document.querySelectorAll('.niCat:checked')].map(c=>c.value);
   const unit = $('niUnit').value.trim();
   const qty = parseInt($('niQty').value||'0',10);
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'กำลังบันทึก…';
   try{
-    await apiPost('addMasterItem', { name, categories, unit, qty });   // บันทึกถาวร
+    const r = await apiPost('addMasterItem', { name, categories, unit, qty });   // บันทึกถาวร
+    if(!r || !r.ok){
+      toast(r && r.error==='duplicate' ? 'มีสินค้านี้อยู่แล้ว' : 'บันทึกไม่สำเร็จ');
+      btn.disabled=false; btn.textContent=label; return;
+    }
     if(qty>0){ await apiPost('addItems', { items:[{ name, qty }] }); }  // เข้ากองด้วย (เขียนชีตตรง)
-    toast('บันทึกแล้ว');
-    closeOrHome();
-  }catch(e){ toast('บันทึกไม่สำเร็จ'); }
+    BOOT.master.push({ name, categories, unit, defaultQty:qty||1 });    // อัปเดต list ในแอปทันที
+    toast('บันทึกแล้ว ✓');
+    goHome();
+  }catch(e){ toast('บันทึกไม่สำเร็จ'); btn.disabled=false; btn.textContent=label; }
 }
 
 // ===================================================================
@@ -406,9 +455,7 @@ async function sendOrderMessage(text){
   if(DEMO){ toast('เดโม: ยังไม่ได้ส่งจริง'); return; }
   await liff.sendMessages([{ type:'text', text }]);
 }
-function closeOrHome(){
-  if(!DEMO && liff.isInClient()) setTimeout(()=>liff.closeWindow(),700); else goHome();
-}
+function closeOrHome(){ goHome(); }   // ไม่ปิดหน้าต่างเอง — กลับหน้าหลักในแอป (กันงงว่าเด้งออก LINE)
 
 // ===================================================================
 // 🧪 โหมดเดโม — ข้อมูลตัวอย่างไว้ดูหน้าตา (ทำงานเมื่อ LIFF_ID ยังเป็น placeholder)
